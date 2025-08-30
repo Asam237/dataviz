@@ -17,17 +17,24 @@ export interface ChartConfig {
 
 interface DataContextType {
   data: DataRow[];
-  isLoading: boolean;
-  error: string | null;
   setData: (data: DataRow[]) => void;
+
   columns: string[];
   setColumns: (columns: string[]) => void;
+
   charts: ChartConfig[];
   setCharts: (charts: ChartConfig[]) => void;
   addChart: (chart: ChartConfig) => void;
   removeChart: (id: string) => void;
+
   filteredData: DataRow[];
   setFilteredData: (data: DataRow[]) => void;
+
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
+
+  error: string | null;
+  setError: (error: string | null) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -62,7 +69,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         filteredData,
         setFilteredData,
         isLoading,
+        setIsLoading,
         error,
+        setError,
       }}
     >
       {children}
