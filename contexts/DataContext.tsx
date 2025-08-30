@@ -17,8 +17,8 @@ export interface ChartConfig {
 
 interface DataContextType {
   data: DataRow[];
-  isLoading: any;
-  error: any;
+  isLoading: boolean;
+  error: string | null;
   setData: (data: DataRow[]) => void;
   columns: string[];
   setColumns: (columns: string[]) => void;
@@ -37,6 +37,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [columns, setColumns] = useState<string[]>([]);
   const [charts, setCharts] = useState<ChartConfig[]>([]);
   const [filteredData, setFilteredData] = useState<DataRow[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   const addChart = (chart: ChartConfig) => {
     setCharts((prev) => [...prev, chart]);
@@ -59,6 +61,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         removeChart,
         filteredData,
         setFilteredData,
+        isLoading,
+        error,
       }}
     >
       {children}
