@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from "react";
 
 export interface DataRow {
   [key: string]: any;
@@ -9,7 +9,7 @@ export interface DataRow {
 export interface ChartConfig {
   id: string;
   title: string;
-  type: 'line' | 'bar' | 'pie' | 'area' | 'radar';
+  type: "line" | "bar" | "pie" | "area" | "radar";
   xAxis: string;
   yAxis: string[];
   colors?: string[];
@@ -17,6 +17,8 @@ export interface ChartConfig {
 
 interface DataContextType {
   data: DataRow[];
+  isLoading: any;
+  error: any;
   setData: (data: DataRow[]) => void;
   columns: string[];
   setColumns: (columns: string[]) => void;
@@ -37,26 +39,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [filteredData, setFilteredData] = useState<DataRow[]>([]);
 
   const addChart = (chart: ChartConfig) => {
-    setCharts(prev => [...prev, chart]);
+    setCharts((prev) => [...prev, chart]);
   };
 
   const removeChart = (id: string) => {
-    setCharts(prev => prev.filter(chart => chart.id !== id));
+    setCharts((prev) => prev.filter((chart) => chart.id !== id));
   };
 
   return (
-    <DataContext.Provider value={{
-      data,
-      setData,
-      columns,
-      setColumns,
-      charts,
-      setCharts,
-      addChart,
-      removeChart,
-      filteredData,
-      setFilteredData,
-    }}>
+    <DataContext.Provider
+      value={{
+        data,
+        setData,
+        columns,
+        setColumns,
+        charts,
+        setCharts,
+        addChart,
+        removeChart,
+        filteredData,
+        setFilteredData,
+      }}
+    >
       {children}
     </DataContext.Provider>
   );
@@ -65,7 +69,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 export function useData() {
   const context = useContext(DataContext);
   if (context === undefined) {
-    throw new Error('useData must be used within a DataProvider');
+    throw new Error("useData must be used within a DataProvider");
   }
   return context;
 }
