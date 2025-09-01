@@ -21,9 +21,99 @@ import {
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useData } from "@/contexts/DataContext";
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
+
+// Helper function to detect and suggest corrections for data inconsistencies
+const detectAndSuggestCorrections = (data: any[]) => {
+  const inconsistencies: { [key: string]: any[] } = {};
+
+  if (!data || data.length === 0) return inconsistencies;
+
+  // Example 1: Detect and correct inconsistent date formats
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  const dateColumns = Object.keys(data[0] || {}).filter((key) =>
+    key.toLowerCase().includes("date")
+  );
+
+  dateColumns.forEach((col) => {
+    inconsistencies[col] = [];
+    data.forEach((row, index) => {
+      if (
+        row[col] &&
+        typeof row[col] === "string" &&
+        !dateRegex.test(row[col])
+      ) {
+        const date = new Date(row[col]);
+        if (!isNaN(date.getTime())) {
+          const formattedDate = date.toISOString().split("T")[0];
+          inconsistencies[col].push({
+            row: index + 1,
+            original: row[col],
+            suggestion: formattedDate,
+            type: "Format de Date",
+          });
+        }
+      }
+    });
+  });
+
+  // Example 2: Detect and suggest corrections for inconsistent number formats
+  const numberColumns = Object.keys(data[0] || {}).filter((key) =>
+    data.some(
+      (row) =>
+        typeof row[key] === "string" &&
+        !isNaN(parseFloat(row[key])) &&
+        !key.toLowerCase().includes("id")
+    )
+  );
+
+  numberColumns.forEach((col) => {
+    inconsistencies[col] = [];
+    data.forEach((row, index) => {
+      const value = row[col];
+      if (typeof value === "string") {
+        const cleanedValue = value.replace(/,/g, ".");
+        const num = parseFloat(cleanedValue);
+        if (!isNaN(num) && num.toString() !== value) {
+          inconsistencies[col].push({
+            row: index + 1,
+            original: value,
+            suggestion: num,
+            type: "Format de Nombre",
+          });
+        }
+      }
+    });
+  });
+
+  return inconsistencies;
+};
+
+// Helper function to apply the suggested corrections
+const applyCorrections = (data: any[], corrections: any) => {
+  if (!corrections) return data;
+
+  const correctedData = data.map((row) => ({ ...row }));
+
+  Object.keys(corrections).forEach((col) => {
+    corrections[col].forEach((correction: { row: number; suggestion: any }) => {
+      if (correctedData[correction.row - 1]) {
+        correctedData[correction.row - 1][col] = correction.suggestion;
+      }
+    });
+  });
+
+  return correctedData;
+};
 
 export default function DataImport() {
   const { setData, setColumns, setFilteredData } = useData();
@@ -31,75 +121,106 @@ export default function DataImport() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [inconsistencies, setInconsistencies] = useState<{
+    [key: string]: any[];
+  }>({});
+  const [correctedData, setCorrectedData] = useState<any[] | null>(null);
+  const [fileToProcess, setFileToProcess] = useState<File | null>(null);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
 
-  const processExcelData = useCallback(
-    (file: File) => {
-      setIsLoading(true);
-      setError(null);
-      setSuccess(null);
-      setUploadProgress(0);
+  const processData = useCallback(
+    (processedData: any[], headers: string[]) => {
+      const detectedInconsistencies =
+        detectAndSuggestCorrections(processedData);
+      setInconsistencies(detectedInconsistencies);
 
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => (prev >= 90 ? 90 : prev + 10));
-      }, 100);
+      const hasInconsistencies = Object.values(detectedInconsistencies).some(
+        (arr) => arr.length > 0
+      );
 
-      const reader = new FileReader();
-
-      reader.onload = (e) => {
-        try {
-          const data = e.target?.result;
-          const workbook = XLSX.read(data, { type: "binary" });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const json = XLSX.utils.sheet_to_json(worksheet, {
-            header: 1,
-          }) as any[];
-
-          // Convert array of arrays to array of objects
-          if (json.length > 1) {
-            const headers = json[0];
-            const processedData = json.slice(1).map((row) => {
-              let obj: { [key: string]: any } = {};
-              headers.forEach((header: string, index: number) => {
-                obj[header] = row[index];
-              });
-              return obj;
-            });
-
-            clearInterval(progressInterval);
-            setUploadProgress(100);
-            setColumns(headers);
-            setData(processedData);
-            setFilteredData(processedData);
-            setSuccess(
-              `✨ ${processedData.length} lignes importées avec succès`
-            );
-          } else {
-            throw new Error("Le fichier Excel est vide ou n'a pas de données.");
-          }
-        } catch (err) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Erreur lors du traitement du fichier Excel."
-          );
-        } finally {
-          setIsLoading(false);
-          setTimeout(() => setUploadProgress(0), 1000);
-        }
-      };
-
-      reader.onerror = () => {
-        clearInterval(progressInterval);
-        setError("Erreur lors de la lecture du fichier.");
-        setIsLoading(false);
-        setUploadProgress(0);
-      };
-
-      reader.readAsBinaryString(file);
+      if (hasInconsistencies) {
+        setSuccess(
+          "Inconsistances détectées! Vérifiez et appliquez les corrections."
+        );
+        setCorrectedData(
+          applyCorrections(processedData, detectedInconsistencies)
+        );
+      } else {
+        setSuccess(`✨ ${processedData.length} lignes importées avec succès`);
+        setInconsistencies({});
+        setCorrectedData(null);
+      }
+      setData(processedData);
+      setColumns(headers);
+      setFilteredData(processedData);
     },
     [setData, setColumns, setFilteredData]
   );
+
+  const processSelectedExcelSheet = useCallback(() => {
+    if (!fileToProcess || !selectedSheet) {
+      setError("Veuillez sélectionner une feuille de calcul.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+    setUploadProgress(0);
+
+    const progressInterval = setInterval(() => {
+      setUploadProgress((prev) => (prev >= 90 ? 90 : prev + 10));
+    }, 100);
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: "binary" });
+        const worksheet = workbook.Sheets[selectedSheet];
+        const json = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+        }) as any[];
+
+        if (json.length > 1) {
+          const headers = json[0] as string[];
+          const processedData = json.slice(1).map((row) => {
+            let obj: { [key: string]: any } = {};
+            headers.forEach((header: string, index: number) => {
+              obj[header] = row[index];
+            });
+            return obj;
+          });
+
+          clearInterval(progressInterval);
+          setUploadProgress(100);
+          processData(processedData, headers);
+        } else {
+          throw new Error(`La feuille de calcul "${selectedSheet}" est vide.`);
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Erreur lors du traitement de la feuille Excel."
+        );
+      } finally {
+        setIsLoading(false);
+        setTimeout(() => setUploadProgress(0), 1000);
+      }
+    };
+
+    reader.onerror = () => {
+      clearInterval(progressInterval);
+      setError("Erreur lors de la lecture du fichier.");
+      setIsLoading(false);
+      setUploadProgress(0);
+    };
+
+    reader.readAsBinaryString(fileToProcess);
+  }, [fileToProcess, selectedSheet, processData]);
 
   const processCSVData = useCallback(
     (file: File) => {
@@ -107,8 +228,9 @@ export default function DataImport() {
       setError(null);
       setSuccess(null);
       setUploadProgress(0);
+      setSheetNames([]);
+      setSelectedSheet(null);
 
-      // Simulate progress
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
           if (prev >= 90) {
@@ -138,26 +260,17 @@ export default function DataImport() {
               throw new Error("Aucune colonne détectée dans le fichier");
             }
 
-            setColumns(headers);
-            setData(processedData);
-            setFilteredData(processedData);
-            setSuccess(
-              `✨ ${processedData.length} lignes importées avec succès`
-            );
-
-            setTimeout(() => {
-              setUploadProgress(0);
-            }, 2000);
+            processData(processedData, headers);
           } catch (err) {
             setError(
               err instanceof Error
                 ? err.message
                 : "Erreur lors du traitement des données"
             );
-            setUploadProgress(0);
           } finally {
             setTimeout(() => {
               setIsLoading(false);
+              setUploadProgress(0);
             }, 1000);
           }
         },
@@ -169,7 +282,7 @@ export default function DataImport() {
         },
       });
     },
-    [setData, setColumns, setFilteredData]
+    [processData]
   );
 
   const onDrop = useCallback(
@@ -178,19 +291,47 @@ export default function DataImport() {
       if (!file) return;
 
       const fileName = file.name.toLowerCase();
+      setInconsistencies({});
+      setCorrectedData(null);
+      setFileToProcess(file);
+      setSheetNames([]);
+      setSelectedSheet(null);
 
       if (fileName.endsWith(".csv")) {
         processCSVData(file);
       } else if (fileName.endsWith(".xls") || fileName.endsWith(".xlsx")) {
-        processExcelData(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = e.target?.result;
+            const workbook = XLSX.read(data, { type: "binary" });
+            setSheetNames(workbook.SheetNames);
+            if (workbook.SheetNames.length > 0) {
+              setSelectedSheet(workbook.SheetNames[0]);
+            }
+          } catch (err) {
+            setError("Erreur lors de la lecture du fichier Excel.");
+          }
+        };
+        reader.readAsBinaryString(file);
       } else {
         setError(
           "Format de fichier non supporté. Veuillez utiliser un fichier CSV ou Excel."
         );
       }
     },
-    [processCSVData, processExcelData]
+    [processCSVData]
   );
+
+  const handleApplyCorrections = () => {
+    if (correctedData) {
+      setData(correctedData);
+      setFilteredData(correctedData);
+      setInconsistencies({});
+      setCorrectedData(null);
+      setSuccess("Toutes les corrections ont été appliquées avec succès!");
+    }
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -203,6 +344,11 @@ export default function DataImport() {
     },
     multiple: false,
   });
+
+  const totalInconsistencies = Object.values(inconsistencies).reduce(
+    (sum, arr) => sum + arr.length,
+    0
+  );
 
   return (
     <div className="space-y-8">
@@ -252,6 +398,47 @@ export default function DataImport() {
             </div>
           </div>
 
+          {sheetNames.length > 0 && (
+            <div className="mt-6 space-y-4">
+              <Card className="border-2 border-blue-200 bg-blue-50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg text-blue-800">
+                    <Database className="h-5 w-5" />
+                    Sélectionner un tableau
+                  </CardTitle>
+                  <CardDescription className="text-blue-700">
+                    Votre fichier contient plusieurs feuilles de calcul.
+                    Veuillez en choisir une à importer.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col sm:flex-row items-center gap-4">
+                  <Select
+                    onValueChange={setSelectedSheet}
+                    value={selectedSheet || ""}
+                  >
+                    <SelectTrigger className="w-full sm:w-[250px]">
+                      <SelectValue placeholder="Choisir une feuille..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sheetNames.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={processSelectedExcelSheet}
+                    disabled={!selectedSheet || isLoading}
+                    className="w-full sm:w-auto"
+                  >
+                    Importer le tableau
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {isLoading && (
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-center space-x-3">
@@ -286,6 +473,46 @@ export default function DataImport() {
             {success}
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Inconsistency Detection & Correction */}
+      {totalInconsistencies > 0 && (
+        <Card className="border-2 border-orange-200 bg-orange-50 animate-in fade-in-50 duration-300">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-orange-800">
+              <AlertCircle className="h-5 w-5" />
+              <span className="text-xl">
+                Inconsistances détectées dans vos données
+              </span>
+            </CardTitle>
+            <CardDescription className="text-orange-700">
+              {totalInconsistencies} problème(s) potentiel(s) détecté(s).
+              Cliquez ci-dessous pour les corriger automatiquement.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ul className="list-disc list-inside text-orange-800">
+              {Object.keys(inconsistencies).map((col) =>
+                inconsistencies[col].map((inc, index) => (
+                  <li key={`${col}-${index}`}>
+                    Dans la colonne `&quot;`
+                    <span className="font-semibold">{col}</span>`&quot;` (ligne{" "}
+                    {inc.row}): Valeur `&quot;{inc.original}`&quot;`
+                    <TrendingUp className="inline h-4 w-4 text-orange-500 mx-1" />
+                    Suggestion: `&quot;`{inc.suggestion}`&quot;` ({inc.type})
+                  </li>
+                ))
+              )}
+            </ul>
+            <Button
+              onClick={handleApplyCorrections}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300"
+            >
+              <Sparkles className="h-5 w-5 mr-2" />
+              Appliquer les corrections intelligentes
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {/* Feature Highlights */}
