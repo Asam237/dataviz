@@ -491,19 +491,6 @@ export default function DataImport() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <ul className="list-disc list-inside text-orange-800">
-              {Object.keys(inconsistencies).map((col) =>
-                inconsistencies[col].map((inc, index) => (
-                  <li key={`${col}-${index}`}>
-                    Dans la colonne `&quot;`
-                    <span className="font-semibold">{col}</span>`&quot;` (ligne{" "}
-                    {inc.row}): Valeur `&quot;{inc.original}`&quot;`
-                    <TrendingUp className="inline h-4 w-4 text-orange-500 mx-1" />
-                    Suggestion: `&quot;`{inc.suggestion}`&quot;` ({inc.type})
-                  </li>
-                ))
-              )}
-            </ul>
             <Button
               onClick={handleApplyCorrections}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300"
