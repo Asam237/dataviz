@@ -259,6 +259,15 @@ export default function Home() {
             >
               <Github className="h-6 w-6" />
             </a>
+            <a
+              href="https://buymeacoffee.com/abbasaliab3"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Dataviz"
+              className="text-gray-400 hover:text-gray-800 transition-colors duration-300"
+            >
+              <HeartHandshake className="h-6 w-6" />
+            </a>
           </div>
           <div className="flex items-center justify-end space-x-2 text-base text-gray-500 text-center w-full">
             <span>Réalisé avec</span>

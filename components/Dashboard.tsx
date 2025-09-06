@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -10,6 +10,8 @@ import {
   Activity,
   Download,
   AlertCircle,
+  GanttChart,
+  GitGraph,
 } from "lucide-react";
 import {
   Card,
@@ -36,53 +38,109 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ScatterChart,
+  Scatter,
 } from "recharts";
 import { useData } from "../contexts/DataContext";
 import * as htmlToImage from "html-to-image";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+
+// Define a type for the data rows for better type safety
+type DataRow = { [key: string]: string | number | null | undefined };
+
+// Define a type for the calculated stats
+type Stat = {
+  column: string;
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
+  count: number;
+  trendPercent: number;
+  isPositiveTrend: boolean;
+  stdDev: number;
+  variance: number;
+};
 
 export default function Dashboard() {
   const { data, columns, isLoading, error } = useData();
+
+  // State for selected columns, initialized as empty arrays.
+  const [selectedLineChartColumns, setSelectedLineChartColumns] = useState<
+    string[]
+  >([]);
+  const [selectedBarChartColumns, setSelectedBarChartColumns] = useState<
+    string[]
+  >([]);
+  const [selectedAreaChartColumns, setSelectedAreaChartColumns] = useState<
+    string[]
+  >([]);
+  const [selectedScatterX, setSelectedScatterX] = useState<string>("");
+  const [selectedScatterY, setSelectedScatterY] = useState<string>("");
 
   const lineChartRef = useRef<HTMLDivElement>(null);
   const barChartRef = useRef<HTMLDivElement>(null);
   const areaChartRef = useRef<HTMLDivElement>(null);
   const pieChartRef = useRef<HTMLDivElement>(null);
+  const scatterChartRef = useRef<HTMLDivElement>(null);
 
+  // Memoize numeric columns calculation
+  const numericColumns = useMemo(() => {
+    if (!data || !columns) return [];
+    const firstRow = data[0] || {};
+    return columns.filter((col) => {
+      const value = firstRow[col];
+      return (
+        typeof value === "number" ||
+        (typeof value === "string" &&
+          !isNaN(Number(value)) &&
+          value.trim() !== "")
+      );
+    });
+  }, [data, columns]);
+
+  // Use useEffect to set default columns once data and numericColumns are available.
+  useEffect(() => {
+    if (numericColumns.length > 0) {
+      if (selectedLineChartColumns.length === 0) {
+        setSelectedLineChartColumns(numericColumns.slice(0, 3));
+      }
+      if (selectedBarChartColumns.length === 0) {
+        setSelectedBarChartColumns(numericColumns.slice(0, 2));
+      }
+      if (selectedAreaChartColumns.length === 0) {
+        setSelectedAreaChartColumns(numericColumns.slice(0, 2));
+      }
+      if (!selectedScatterX) {
+        setSelectedScatterX(numericColumns[0]);
+      }
+      if (!selectedScatterY && numericColumns.length > 1) {
+        setSelectedScatterY(numericColumns[1]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numericColumns]);
+
+  // Memoize stats calculation
   const stats = useMemo(() => {
-    if (
-      !data ||
-      !Array.isArray(data) ||
-      data.length === 0 ||
-      !columns ||
-      columns.length === 0
-    ) {
+    if (!data || data.length === 0 || numericColumns.length === 0) {
       return null;
     }
 
     try {
-      // Filtrer et valider les colonnes numériques
-      const numericColumns = columns.filter((col) => {
-        if (!col || typeof col !== "string") return false;
-
-        return data.some((row) => {
-          if (!row || typeof row !== "object") return false;
-          const value = row[col];
-          if (value === null || value === undefined || value === "")
-            return false;
-          const numValue = Number(value);
-          return !isNaN(numValue) && isFinite(numValue);
-        });
-      });
-
-      if (numericColumns.length === 0) return null;
-
-      const calculations = numericColumns.slice(0, 8).map((col) => {
+      const calculations: Stat[] = numericColumns.slice(0, 8).map((col) => {
         const values = data
           .map((row) => {
-            if (!row || typeof row !== "object") return NaN;
-            const value = row[col];
-            if (value === null || value === undefined || value === "")
+            const value = (row as DataRow)[col];
+            if (value === null || value === undefined || value === "") {
               return NaN;
+            }
             return Number(value);
           })
           .filter((val) => !isNaN(val) && isFinite(val));
@@ -97,6 +155,8 @@ export default function Dashboard() {
             count: 0,
             trendPercent: 0,
             isPositiveTrend: false,
+            stdDev: 0,
+            variance: 0,
           };
         }
 
@@ -105,21 +165,23 @@ export default function Dashboard() {
         const min = Math.min(...values);
         const max = Math.max(...values);
 
-        // Calcul de la tendance sécurisé
+        // Calculate variance and standard deviation
+        const variance =
+          values.reduce((s, val) => s + Math.pow(val - avg, 2), 0) /
+          values.length;
+        const stdDev = Math.sqrt(variance);
+
         let trendPercent = 0;
         let isPositiveTrend = false;
-
         if (values.length >= 4) {
           const midPoint = Math.floor(values.length / 2);
           const firstHalf = values.slice(0, midPoint);
           const secondHalf = values.slice(midPoint);
-
           if (firstHalf.length > 0 && secondHalf.length > 0) {
             const firstAvg =
               firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
             const secondAvg =
               secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-
             if (firstAvg !== 0) {
               trendPercent = ((secondAvg - firstAvg) / firstAvg) * 100;
               isPositiveTrend = trendPercent > 0;
@@ -136,6 +198,8 @@ export default function Dashboard() {
           count: values.length,
           trendPercent: Number(trendPercent.toFixed(2)),
           isPositiveTrend,
+          stdDev: Number(stdDev.toFixed(2)),
+          variance: Number(variance.toFixed(2)),
         };
       });
 
@@ -144,43 +208,33 @@ export default function Dashboard() {
       console.error("Erreur lors du calcul des statistiques:", err);
       return null;
     }
-  }, [data, columns]);
+  }, [data, numericColumns]);
 
+  // Memoize chart data preparation
   const chartData = useMemo(() => {
-    if (!data || !Array.isArray(data) || data.length === 0) return [];
-
+    if (!data || data.length === 0) return [];
     try {
-      // Nettoyer et valider les données pour les graphiques
       const validData = data
         .filter((row) => row && typeof row === "object")
-        .slice(0, 20)
+        .slice(0, 50)
         .map((row, index) => {
-          const cleanedRow: any = { index: index + 1 };
-
+          const cleanedRow: { [key: string]: any } = { index: index + 1 };
           columns.forEach((col) => {
             if (col && typeof col === "string") {
-              let value = row[col];
-
-              // Nettoyer et convertir les valeurs
+              const value = (row as DataRow)[col];
               if (value === null || value === undefined) {
-                value = 0;
+                cleanedRow[col] = 0;
               } else if (typeof value === "string") {
-                value = value.trim();
-                const numValue = Number(value);
-                if (!isNaN(numValue) && isFinite(numValue)) {
-                  value = numValue;
-                } else if (value === "") {
-                  value = 0;
-                }
+                const numValue = Number(value.trim());
+                cleanedRow[col] =
+                  !isNaN(numValue) && isFinite(numValue) ? numValue : 0;
+              } else {
+                cleanedRow[col] = value;
               }
-
-              cleanedRow[col] = value;
             }
           });
-
           return cleanedRow;
         });
-
       return validData;
     } catch (err) {
       console.error(
@@ -221,7 +275,6 @@ export default function Dashboard() {
             backgroundColor: "white",
           });
         }
-
         const link = document.createElement("a");
         link.download = `${fileName}.${format}`;
         link.href = dataUrl;
@@ -232,7 +285,6 @@ export default function Dashboard() {
     }
   };
 
-  // Affichage du loading
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -244,7 +296,6 @@ export default function Dashboard() {
     );
   }
 
-  // Affichage des erreurs
   if (error) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -260,7 +311,6 @@ export default function Dashboard() {
     );
   }
 
-  // Affichage quand pas de données
   if (!data || !Array.isArray(data) || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -283,22 +333,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  // Préparer les colonnes pour les graphiques de manière sécurisée
-  const numericColumns = columns.filter((col) => {
-    if (!col || typeof col !== "string") return false;
-    return data.some((row) => {
-      if (!row || typeof row !== "object") return false;
-      const value = row[col];
-      if (value === null || value === undefined || value === "") return false;
-      const numValue = Number(value);
-      return !isNaN(numValue) && isFinite(numValue);
-    });
-  });
-
-  const lineChartColumns = numericColumns.slice(0, 3);
-  const barChartColumns = numericColumns.slice(0, 2);
-  const areaChartColumns = numericColumns.slice(0, 2);
 
   return (
     <div className="space-y-8">
@@ -349,7 +383,8 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-slate-600">
-                    Moy: {stat.avg.toFixed(1)}
+                    Moy: {stat.avg.toFixed(1)} | Écart-type:{" "}
+                    {stat.stdDev.toFixed(1)}
                   </p>
                   <div className="flex items-center gap-1">
                     {stat.isPositiveTrend ? (
@@ -375,7 +410,7 @@ export default function Dashboard() {
       {/* Charts Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {/* Trend Chart */}
-        {lineChartColumns.length > 0 && chartData.length > 0 && (
+        {selectedLineChartColumns.length > 0 && chartData.length > 0 && (
           <Card className="border-0 shadow-xl bg-gradient-to-br from-white to-blue-50/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 justify-between text-xl">
@@ -400,6 +435,65 @@ export default function Dashboard() {
               <CardDescription className="text-base">
                 Analyse des tendances et patterns dans le temps
               </CardDescription>
+              <div className="flex space-x-2">
+                <Select
+                  value={selectedLineChartColumns[0]}
+                  onValueChange={(value) => {
+                    const newColumns = [...selectedLineChartColumns];
+                    newColumns[0] = value;
+                    setSelectedLineChartColumns(newColumns);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sélectionner une colonne" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedLineChartColumns[1]}
+                  onValueChange={(value) => {
+                    const newColumns = [...selectedLineChartColumns];
+                    newColumns[1] = value;
+                    setSelectedLineChartColumns(newColumns);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sélectionner une colonne" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedLineChartColumns[2]}
+                  onValueChange={(value) => {
+                    const newColumns = [...selectedLineChartColumns];
+                    newColumns[2] = value;
+                    setSelectedLineChartColumns(newColumns);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sélectionner une colonne" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               <div ref={lineChartRef} className="bg-white p-4 rounded-xl">
@@ -422,7 +516,7 @@ export default function Dashboard() {
                       }}
                     />
                     <Legend />
-                    {lineChartColumns.map((col, index) => (
+                    {selectedLineChartColumns.map((col, index) => (
                       <Line
                         key={`line-${col}-${index}`}
                         type="monotone"
@@ -442,7 +536,7 @@ export default function Dashboard() {
         )}
 
         {/* Performance Chart */}
-        {barChartColumns.length > 0 && chartData.length > 0 && (
+        {selectedBarChartColumns.length > 0 && chartData.length > 0 && (
           <Card className="border-0 shadow-xl bg-gradient-to-br from-white to-green-50/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 justify-between text-xl">
@@ -471,6 +565,46 @@ export default function Dashboard() {
               <CardDescription className="text-base">
                 Comparaison des métriques principales
               </CardDescription>
+              <div className="flex space-x-2">
+                <Select
+                  value={selectedBarChartColumns[0]}
+                  onValueChange={(value) => {
+                    const newColumns = [...selectedBarChartColumns];
+                    newColumns[0] = value;
+                    setSelectedBarChartColumns(newColumns);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sélectionner une colonne" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedBarChartColumns[1]}
+                  onValueChange={(value) => {
+                    const newColumns = [...selectedBarChartColumns];
+                    newColumns[1] = value;
+                    setSelectedBarChartColumns(newColumns);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sélectionner une colonne" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               <div ref={barChartRef} className="bg-white p-4 rounded-xl">
@@ -493,7 +627,7 @@ export default function Dashboard() {
                       }}
                     />
                     <Legend />
-                    {barChartColumns.map((col, index) => (
+                    {selectedBarChartColumns.map((col, index) => (
                       <Bar
                         key={`bar-${col}-${index}`}
                         dataKey={col}
@@ -509,10 +643,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Secondary Charts */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {/* Area Chart */}
-        {lineChartColumns.length > 0 && chartData.length > 0 && (
+        {selectedAreaChartColumns.length > 0 && chartData.length > 0 && (
           <Card className="border-0 shadow-xl bg-gradient-to-br from-white to-purple-50/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 justify-between text-xl">
@@ -537,6 +670,46 @@ export default function Dashboard() {
               <CardDescription className="text-base">
                 Visualisation des volumes et accumulations
               </CardDescription>
+              <div className="flex space-x-2">
+                <Select
+                  value={selectedAreaChartColumns[0]}
+                  onValueChange={(value) => {
+                    const newColumns = [...selectedAreaChartColumns];
+                    newColumns[0] = value;
+                    setSelectedAreaChartColumns(newColumns);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sélectionner une colonne" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedAreaChartColumns[1]}
+                  onValueChange={(value) => {
+                    const newColumns = [...selectedAreaChartColumns];
+                    newColumns[1] = value;
+                    setSelectedAreaChartColumns(newColumns);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sélectionner une colonne" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               <div ref={areaChartRef} className="bg-white p-4 rounded-xl">
@@ -559,7 +732,7 @@ export default function Dashboard() {
                       }}
                     />
                     <Legend />
-                    {lineChartColumns.slice(0, 2).map((col, index) => (
+                    {selectedAreaChartColumns.map((col, index) => (
                       <Area
                         key={`area-${col}-${index}`}
                         type="monotone"
@@ -578,6 +751,113 @@ export default function Dashboard() {
           </Card>
         )}
 
+        {/* Scatter Chart (new) */}
+        {selectedScatterX && selectedScatterY && chartData.length > 0 && (
+          <Card className="border-0 shadow-xl bg-gradient-to-br from-white to-red-50/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3 justify-between text-xl">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-500 rounded-lg">
+                    <GitGraph className="h-5 w-5 text-white" />
+                  </div>
+                  Corrélation et Anomalies
+                </div>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      handleExport(
+                        scatterChartRef,
+                        "correlation-anomalies",
+                        "png"
+                      )
+                    }
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardTitle>
+              <CardDescription className="text-base">
+                Visualisation de la relation entre deux variables.
+              </CardDescription>
+              <div className="flex space-x-2">
+                <Select
+                  value={selectedScatterX}
+                  onValueChange={setSelectedScatterX}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Axe X" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedScatterY}
+                  onValueChange={setSelectedScatterY}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Axe Y" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericColumns.map((col) => (
+                      <SelectItem key={col} value={col}>
+                        {col}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div ref={scatterChartRef} className="bg-white p-4 rounded-xl">
+                <ResponsiveContainer width="100%" height={350}>
+                  <ScatterChart
+                    margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
+                  >
+                    <CartesianGrid />
+                    <XAxis
+                      type="number"
+                      dataKey={selectedScatterX}
+                      name={selectedScatterX}
+                      stroke="#64748b"
+                      fontSize={12}
+                    />
+                    <YAxis
+                      type="number"
+                      dataKey={selectedScatterY}
+                      name={selectedScatterY}
+                      stroke="#64748b"
+                      fontSize={12}
+                    />
+                    <Tooltip
+                      cursor={{ strokeDasharray: "3 3" }}
+                      contentStyle={{
+                        backgroundColor: "white",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "12px",
+                        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                      }}
+                    />
+                    <Scatter
+                      name="Corrélation"
+                      data={chartData}
+                      fill="#8884d8"
+                    />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {/* Distribution Chart */}
         {stats && stats.length > 0 && (
           <Card className="border-0 shadow-xl bg-gradient-to-br from-white to-orange-50/30">
