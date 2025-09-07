@@ -10,7 +10,6 @@ import {
   Activity,
   Download,
   AlertCircle,
-  GanttChart,
   GitGraph,
 } from "lucide-react";
 import {
