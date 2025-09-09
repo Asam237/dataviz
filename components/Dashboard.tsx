@@ -50,10 +50,8 @@ import {
   SelectValue,
 } from "./ui/select";
 
-// Define a type for the data rows for better type safety
 type DataRow = { [key: string]: string | number | null | undefined };
 
-// Define a type for the calculated stats
 type Stat = {
   column: string;
   sum: number;
