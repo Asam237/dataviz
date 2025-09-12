@@ -10,6 +10,8 @@ import {
   Sparkles,
   Database,
   TrendingUp,
+  Settings,
+  X,
 } from "lucide-react";
 import {
   Card,
@@ -28,6 +30,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+
 import { useData } from "@/contexts/DataContext";
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
@@ -129,11 +151,29 @@ export default function DataImport() {
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
 
+  // New state variables for data cleaning and transformation tools
+  const [showCleaningTools, setShowCleaningTools] = useState(false);
+  const [cleanedData, setCleanedData] = useState<any[] | null>(null);
+  const [columnToSplit, setColumnToSplit] = useState<string | null>(null);
+  const [splitDelimiter, setSplitDelimiter] = useState("");
+  const [newColumnNames, setNewColumnNames] = useState<string[]>([]);
+  const [renameMapping, setRenameMapping] = useState<{ [key: string]: string }>(
+    {}
+  );
+  const [missingValueColumn, setMissingValueColumn] = useState<string | null>(
+    null
+  );
+  const [missingValueMethod, setMissingValueMethod] = useState<string | null>(
+    null
+  );
+  const [missingValueFill, setMissingValueFill] = useState<string>("");
+
   const processData = useCallback(
     (processedData: any[], headers: string[]) => {
       const detectedInconsistencies =
         detectAndSuggestCorrections(processedData);
       setInconsistencies(detectedInconsistencies);
+      setCleanedData(processedData); // Store raw data for cleaning tools
 
       const hasInconsistencies = Object.values(detectedInconsistencies).some(
         (arr) => arr.length > 0
@@ -154,6 +194,7 @@ export default function DataImport() {
       setData(processedData);
       setColumns(headers);
       setFilteredData(processedData);
+      setShowCleaningTools(true); // Show cleaning tools after successful import
     },
     [setData, setColumns, setFilteredData]
   );
@@ -296,6 +337,8 @@ export default function DataImport() {
       setFileToProcess(file);
       setSheetNames([]);
       setSelectedSheet(null);
+      setShowCleaningTools(false);
+      setCleanedData(null);
 
       if (fileName.endsWith(".csv")) {
         processCSVData(file);
@@ -331,6 +374,147 @@ export default function DataImport() {
       setCorrectedData(null);
       setSuccess("Toutes les corrections ont été appliquées avec succès!");
     }
+  };
+
+  const handleMissingValues = () => {
+    if (!missingValueColumn || !missingValueMethod || !cleanedData) {
+      setError("Veuillez choisir une colonne et une méthode.");
+      return;
+    }
+
+    const updatedData = [...cleanedData];
+    let fillValue: any;
+
+    if (missingValueMethod === "fill_value" && missingValueFill.trim() === "") {
+      setError(
+        "Veuillez spécifier une valeur pour la méthode 'Remplacer par une valeur'."
+      );
+      return;
+    }
+
+    if (missingValueMethod.startsWith("fill_")) {
+      const numericData = updatedData
+        .map((row) => parseFloat(row[missingValueColumn]))
+        .filter((val) => !isNaN(val));
+
+      switch (missingValueMethod) {
+        case "fill_mean":
+          fillValue =
+            numericData.reduce((sum, val) => sum + val, 0) / numericData.length;
+          break;
+        case "fill_median":
+          const sorted = [...numericData].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          fillValue =
+            sorted.length % 2 !== 0
+              ? sorted[mid]
+              : (sorted[mid - 1] + sorted[mid]) / 2;
+          break;
+        case "fill_mode":
+          const modeMap: { [key: string]: number } = {};
+          numericData.forEach((val) => {
+            modeMap[val] = (modeMap[val] || 0) + 1;
+          });
+          fillValue = Object.keys(modeMap).reduce((a, b) =>
+            modeMap[a] > modeMap[b] ? a : b
+          );
+          break;
+        case "fill_value":
+          fillValue = missingValueFill;
+          break;
+        default:
+          fillValue = null;
+      }
+    }
+
+    const finalData = updatedData.filter((row) => {
+      if (missingValueMethod === "remove_rows") {
+        return (
+          row[missingValueColumn] !== null &&
+          row[missingValueColumn] !== undefined &&
+          row[missingValueColumn] !== ""
+        );
+      }
+      if (
+        row[missingValueColumn] === null ||
+        row[missingValueColumn] === undefined ||
+        row[missingValueColumn] === ""
+      ) {
+        row[missingValueColumn] = fillValue;
+      }
+      return true;
+    });
+
+    setData(finalData);
+    setFilteredData(finalData);
+    setCleanedData(finalData);
+    setSuccess(`Données nettoyées. ${missingValueColumn} a été mis à jour.`);
+  };
+
+  const handleSplitColumn = () => {
+    if (!columnToSplit || !splitDelimiter || !cleanedData) {
+      setError("Veuillez choisir une colonne et un délimiteur.");
+      return;
+    }
+
+    const newHeaders = [...Object.keys(cleanedData[0])];
+    const columnIndex = newHeaders.indexOf(columnToSplit);
+    if (columnIndex === -1) {
+      setError("Colonne introuvable.");
+      return;
+    }
+
+    const newColumns =
+      newColumnNames.length > 0 ? newColumnNames : ["Part 1", "Part 2"];
+
+    const updatedData = cleanedData.map((row) => {
+      const originalValue = row[columnToSplit];
+      if (typeof originalValue === "string") {
+        const parts = originalValue.split(splitDelimiter);
+        let newRow = { ...row };
+        newColumns.forEach((newCol, index) => {
+          newRow[newCol] = parts[index] || null;
+        });
+        delete newRow[columnToSplit];
+        return newRow;
+      }
+      return row;
+    });
+
+    const finalHeaders = newHeaders
+      .filter((h) => h !== columnToSplit)
+      .concat(newColumns);
+
+    setData(updatedData);
+    setFilteredData(updatedData);
+    setCleanedData(updatedData);
+    setColumns(finalHeaders);
+    setSuccess(`La colonne ${columnToSplit} a été divisée avec succès.`);
+    setColumnToSplit(null);
+    setSplitDelimiter("");
+    setNewColumnNames([]);
+  };
+
+  const handleRenameColumns = () => {
+    if (!cleanedData) return;
+
+    const updatedData = cleanedData.map((row) => {
+      const newRow: { [key: string]: any } = {};
+      Object.keys(row).forEach((key) => {
+        newRow[renameMapping[key] || key] = row[key];
+      });
+      return newRow;
+    });
+
+    const updatedHeaders = Object.keys(cleanedData[0]).map(
+      (h) => renameMapping[h] || h
+    );
+    setData(updatedData);
+    setFilteredData(updatedData);
+    setCleanedData(updatedData);
+    setColumns(updatedHeaders);
+    setSuccess(`Les colonnes ont été renommées avec succès.`);
+    setRenameMapping({});
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -498,6 +682,256 @@ export default function DataImport() {
               <Sparkles className="h-5 w-5 mr-2" />
               Appliquer les corrections intelligentes
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Data Cleaning and Transformation Tools */}
+      {showCleaningTools && cleanedData && (
+        <Card className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3 text-purple-800">
+              <Settings className="h-6 w-6" />
+              Outils de Nettoyage et Transformation
+            </CardTitle>
+            <CardDescription className="text-purple-700">
+              Nettoyez, transformez et structurez vos données avant la
+              visualisation
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="quality" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="quality">Qualité des Données</TabsTrigger>
+                <TabsTrigger value="missing-values">
+                  Valeurs Manquantes
+                </TabsTrigger>
+                <TabsTrigger value="split-columns">
+                  Diviser Colonnes
+                </TabsTrigger>
+                <TabsTrigger value="rename-columns">
+                  Renommer Colonnes
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Data Quality Tab */}
+              <TabsContent value="quality" className="mt-6 space-y-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Aperçu Qualité
+                </h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Colonne</TableHead>
+                      <TableHead>Problème</TableHead>
+                      <TableHead>Détection</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.keys(inconsistencies).map((col) =>
+                      inconsistencies[col].map((issue, index) => (
+                        <TableRow key={`${col}-${index}`}>
+                          <TableCell className="font-medium">{col}</TableCell>
+                          <TableCell className="text-red-500">
+                            {issue.type}
+                          </TableCell>
+                          <TableCell>
+                            Ligne {issue.row}: `&quot;`{issue.original}`&quot;`
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const newInconsistencies = {
+                                  ...inconsistencies,
+                                };
+                                if (newInconsistencies[col]) {
+                                  newInconsistencies[col] = newInconsistencies[
+                                    col
+                                  ].filter((_, i) => i !== index);
+                                }
+                                setInconsistencies(newInconsistencies);
+                                const newCorrectedData = applyCorrections(
+                                  cleanedData || [],
+                                  { [col]: [issue] }
+                                );
+                                setData(newCorrectedData);
+                                setFilteredData(newCorrectedData);
+                                setCleanedData(newCorrectedData);
+                                setSuccess(
+                                  `Correction appliquée à la colonne ${col}, ligne ${issue.row}.`
+                                );
+                              }}
+                            >
+                              Appliquer
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                    {totalInconsistencies === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="text-center text-slate-500"
+                        >
+                          Aucun problème de qualité détecté.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TabsContent>
+
+              {/* Missing Values Tab */}
+              <TabsContent value="missing-values" className="mt-6 space-y-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Gérer les Valeurs Manquantes
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="missing-col">
+                      Sélectionner une colonne
+                    </Label>
+                    <Select
+                      onValueChange={setMissingValueColumn}
+                      value={missingValueColumn || ""}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choisir une colonne..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(cleanedData[0] || {}).map((col) => (
+                          <SelectItem key={col} value={col}>
+                            {col}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="missing-method">Méthode</Label>
+                    <Select
+                      onValueChange={setMissingValueMethod}
+                      value={missingValueMethod || ""}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choisir une méthode..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="remove_rows">
+                          Supprimer les lignes
+                        </SelectItem>
+                        <SelectItem value="fill_mean">
+                          Remplacer par la moyenne
+                        </SelectItem>
+                        <SelectItem value="fill_median">
+                          Remplacer par la médiane
+                        </SelectItem>
+                        <SelectItem value="fill_mode">
+                          Remplacer par le mode
+                        </SelectItem>
+                        <SelectItem value="fill_value">
+                          Remplacer par une valeur spécifique
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {missingValueMethod === "fill_value" && (
+                    <div>
+                      <Label htmlFor="fill-value">Valeur de remplacement</Label>
+                      <Input
+                        id="fill-value"
+                        placeholder="Ex: 0, 'N/A'"
+                        value={missingValueFill}
+                        onChange={(e) => setMissingValueFill(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+                <Button onClick={handleMissingValues} className="w-full mt-4">
+                  Appliquer la méthode de gestion
+                </Button>
+              </TabsContent>
+
+              {/* Split Columns Tab */}
+              <TabsContent value="split-columns" className="mt-6 space-y-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Diviser une Colonne
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="split-col">Sélectionner une colonne</Label>
+                    <Select
+                      onValueChange={setColumnToSplit}
+                      value={columnToSplit || ""}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choisir une colonne..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(cleanedData[0] || {}).map((col) => (
+                          <SelectItem key={col} value={col}>
+                            {col}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="delimiter">Délimiteur</Label>
+                    <Input
+                      id="delimiter"
+                      placeholder="Ex: ',', ' ', ';'"
+                      value={splitDelimiter}
+                      onChange={(e) => setSplitDelimiter(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <Button onClick={handleSplitColumn} className="w-full mt-4">
+                  Diviser la colonne
+                </Button>
+              </TabsContent>
+
+              {/* Rename Columns Tab */}
+              <TabsContent value="rename-columns" className="mt-6 space-y-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Renommer les Colonnes
+                </h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nom Actuel</TableHead>
+                      <TableHead>Nouveau Nom</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.keys(cleanedData[0] || {}).map((col) => (
+                      <TableRow key={col}>
+                        <TableCell className="font-medium">{col}</TableCell>
+                        <TableCell>
+                          <Input
+                            placeholder={col}
+                            value={renameMapping[col] || ""}
+                            onChange={(e) =>
+                              setRenameMapping({
+                                ...renameMapping,
+                                [col]: e.target.value,
+                              })
+                            }
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <Button onClick={handleRenameColumns} className="w-full mt-4">
+                  Appliquer le renommage
+                </Button>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       )}
