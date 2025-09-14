@@ -1,4 +1,4 @@
-name: DataViz CI/CD Pipeline
+name: DataViz Pipeline CI/CD
 
 on:
   push:
