@@ -72,7 +72,13 @@ import { useData } from "@/contexts/DataContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ColType = "number" | "text" | "date" | "boolean";
-type FilterOperator = "contains" | "equals" | "gt" | "lt" | "empty" | "notempty";
+type FilterOperator =
+  | "contains"
+  | "equals"
+  | "gt"
+  | "lt"
+  | "empty"
+  | "notempty";
 
 interface ColumnFilter {
   column: string;
@@ -107,26 +113,39 @@ function detectType(col: string, data: Record<string, unknown>[]): ColType {
   if (sample == null) return "text";
   const s = String(sample).trim();
   if (!isNaN(Number(s)) && s !== "") return "number";
-  if (/^\d{4}-\d{2}-\d{2}/.test(s) || /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s)) return "date";
-  if (["true", "false", "oui", "non", "yes", "no"].includes(s.toLowerCase())) return "boolean";
+  if (/^\d{4}-\d{2}-\d{2}/.test(s) || /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s))
+    return "date";
+  if (["true", "false", "oui", "non", "yes", "no"].includes(s.toLowerCase()))
+    return "boolean";
   return "text";
 }
 
-function computeColStats(col: string, type: ColType, data: Record<string, unknown>[]): ColStats {
+function computeColStats(
+  col: string,
+  type: ColType,
+  data: Record<string, unknown>[],
+): ColStats {
   const nullCount = data.filter((r) => r[col] == null || r[col] === "").length;
   const unique = new Set(data.map((r) => r[col])).size;
 
   if (type !== "number") return { type, nullCount, uniqueCount: unique };
 
-  const nums = data.map((r) => Number(r[col])).filter((n) => !isNaN(n) && isFinite(n));
+  const nums = data
+    .map((r) => Number(r[col]))
+    .filter((n) => !isNaN(n) && isFinite(n));
   if (!nums.length) return { type, nullCount, uniqueCount: unique };
 
   const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
   const half = Math.floor(nums.length / 2);
   const firstAvg = nums.slice(0, half).reduce((a, b) => a + b, 0) / (half || 1);
-  const secondAvg = nums.slice(half).reduce((a, b) => a + b, 0) / (nums.length - half || 1);
+  const secondAvg =
+    nums.slice(half).reduce((a, b) => a + b, 0) / (nums.length - half || 1);
   const trend: "up" | "down" | "flat" =
-    secondAvg > firstAvg * 1.03 ? "up" : secondAvg < firstAvg * 0.97 ? "down" : "flat";
+    secondAvg > firstAvg * 1.03
+      ? "up"
+      : secondAvg < firstAvg * 0.97
+        ? "down"
+        : "flat";
 
   return {
     type,
@@ -144,13 +163,20 @@ function applyFilter(row: Record<string, unknown>, f: ColumnFilter): boolean {
   const cell = String(cellRaw ?? "").toLowerCase();
   const v = f.value.toLowerCase();
   switch (f.operator) {
-    case "contains": return cell.includes(v);
-    case "equals": return cell === v;
-    case "gt": return !isNaN(Number(cellRaw)) && Number(cellRaw) > Number(v);
-    case "lt": return !isNaN(Number(cellRaw)) && Number(cellRaw) < Number(v);
-    case "empty": return cellRaw == null || cellRaw === "";
-    case "notempty": return cellRaw != null && cellRaw !== "";
-    default: return true;
+    case "contains":
+      return cell.includes(v);
+    case "equals":
+      return cell === v;
+    case "gt":
+      return !isNaN(Number(cellRaw)) && Number(cellRaw) > Number(v);
+    case "lt":
+      return !isNaN(Number(cellRaw)) && Number(cellRaw) < Number(v);
+    case "empty":
+      return cellRaw == null || cellRaw === "";
+    case "notempty":
+      return cellRaw != null && cellRaw !== "";
+    default:
+      return true;
   }
 }
 
@@ -200,20 +226,27 @@ export default function DataTable() {
   // ── Column metadata ──────────────────────────────────────────────────────
   const colTypes = useMemo(
     () => Object.fromEntries(columns.map((c) => [c, detectType(c, data)])),
-    [columns, data]
+    [columns, data],
   );
 
   const colStats = useMemo(
-    () => Object.fromEntries(columns.map((c) => [c, computeColStats(c, colTypes[c], data)])),
-    [columns, colTypes, data]
+    () =>
+      Object.fromEntries(
+        columns.map((c) => [c, computeColStats(c, colTypes[c], data)]),
+      ),
+    [columns, colTypes, data],
   );
 
   const visibleCols = useMemo(
     () => [
-      ...columns.filter((c) => pinnedCols.includes(c) && !hiddenCols.includes(c)),
-      ...columns.filter((c) => !pinnedCols.includes(c) && !hiddenCols.includes(c)),
+      ...columns.filter(
+        (c) => pinnedCols.includes(c) && !hiddenCols.includes(c),
+      ),
+      ...columns.filter(
+        (c) => !pinnedCols.includes(c) && !hiddenCols.includes(c),
+      ),
     ],
-    [columns, pinnedCols, hiddenCols]
+    [columns, pinnedCols, hiddenCols],
   );
 
   // ── Filtering & sorting ──────────────────────────────────────────────────
@@ -224,7 +257,11 @@ export default function DataTable() {
     if (searchTerm.trim()) {
       const t = searchTerm.toLowerCase();
       rows = rows.filter((row) =>
-        visibleCols.some((c) => String(row[c] ?? "").toLowerCase().includes(t))
+        visibleCols.some((c) =>
+          String(row[c] ?? "")
+            .toLowerCase()
+            .includes(t),
+        ),
       );
     }
 
@@ -239,7 +276,8 @@ export default function DataTable() {
       rows.sort((a, b) => {
         const av = a[sortColumn];
         const bv = b[sortColumn];
-        const an = Number(av), bn = Number(bv);
+        const an = Number(av),
+          bn = Number(bv);
         if (!isNaN(an) && !isNaN(bn)) return dir === "asc" ? an - bn : bn - an;
         const as = String(av ?? "").toLowerCase();
         const bs = String(bv ?? "").toLowerCase();
@@ -251,7 +289,9 @@ export default function DataTable() {
   }, [data, searchTerm, columnFilters, sortColumn, sortDirection, visibleCols]);
 
   // sync to context
-  React.useEffect(() => { setFilteredData(processed); }, [processed, setFilteredData]);
+  React.useEffect(() => {
+    setFilteredData(processed);
+  }, [processed, setFilteredData]);
 
   const totalPages = Math.max(1, Math.ceil(processed.length / itemsPerPage));
   const safePage = Math.min(currentPage, totalPages);
@@ -264,7 +304,10 @@ export default function DataTable() {
   const qualityScore = useMemo(() => {
     if (!data.length || !columns.length) return 100;
     const totalCells = data.length * columns.length;
-    const nullCells = columns.reduce((acc, c) => acc + (colStats[c]?.nullCount ?? 0), 0);
+    const nullCells = columns.reduce(
+      (acc, c) => acc + (colStats[c]?.nullCount ?? 0),
+      0,
+    );
     return Math.round(((totalCells - nullCells) / totalCells) * 100);
   }, [data, columns, colStats]);
 
@@ -291,13 +334,19 @@ export default function DataTable() {
   }, []);
 
   const togglePin = (col: string) =>
-    setPinnedCols((p) => (p.includes(col) ? p.filter((c) => c !== col) : [...p, col]));
+    setPinnedCols((p) =>
+      p.includes(col) ? p.filter((c) => c !== col) : [...p, col],
+    );
 
   const addFilter = () => {
     if (!activeFilter || !activeFilter.col) return;
     setColumnFilters((prev) => [
       ...prev.filter((f) => f.column !== activeFilter.col),
-      { column: activeFilter.col, operator: activeFilter.op, value: activeFilter.val },
+      {
+        column: activeFilter.col,
+        operator: activeFilter.op,
+        value: activeFilter.val,
+      },
     ]);
     setActiveFilter(null);
     setCurrentPage(1);
@@ -336,17 +385,23 @@ export default function DataTable() {
   const exportToCSV = () => {
     const csv = [
       visibleCols.join(","),
-      ...processed.map((row) => visibleCols.map((c) => `"${row[c] ?? ""}"`).join(",")),
+      ...processed.map((row) =>
+        visibleCols.map((c) => `"${row[c] ?? ""}"`).join(","),
+      ),
     ].join("\n");
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    a.href = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+    );
     a.download = `export-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   };
 
   const copySelection = () => {
     const rows = paginatedData.filter((_, i) => selectedRows.has(i));
-    const text = rows.map((r) => visibleCols.map((c) => r[c] ?? "").join("\t")).join("\n");
+    const text = rows
+      .map((r) => visibleCols.map((c) => r[c] ?? "").join("\t"))
+      .join("\n");
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -361,7 +416,9 @@ export default function DataTable() {
 
   const selectAll = () =>
     setSelectedRows((s) =>
-      s.size === paginatedData.length ? new Set() : new Set(paginatedData.map((_, i) => i))
+      s.size === paginatedData.length
+        ? new Set()
+        : new Set(paginatedData.map((_, i) => i)),
     );
 
   // ── Type icon ──────────────────────────────────────────────────────────
@@ -372,8 +429,10 @@ export default function DataTable() {
   };
 
   const TrendIcon = ({ trend }: { trend?: "up" | "down" | "flat" }) => {
-    if (trend === "up") return <TrendingUp className="h-3 w-3 text-emerald-500" />;
-    if (trend === "down") return <TrendingDown className="h-3 w-3 text-red-400" />;
+    if (trend === "up")
+      return <TrendingUp className="h-3 w-3 text-emerald-500" />;
+    if (trend === "down")
+      return <TrendingDown className="h-3 w-3 text-red-400" />;
     return <Minus className="h-3 w-3 text-slate-400" />;
   };
 
@@ -386,8 +445,12 @@ export default function DataTable() {
             <div className="absolute inset-0 bg-gradient-to-r from-violet-400 to-fuchsia-500 rounded-full blur-2xl opacity-20 animate-pulse" />
             <Database className="relative h-20 w-20 mx-auto text-slate-300" />
           </div>
-          <h3 className="text-2xl font-bold text-slate-800 mb-2">Explorateur de Données</h3>
-          <p className="text-slate-500">Importez un fichier pour commencer l'exploration</p>
+          <h3 className="text-2xl font-bold text-slate-800 mb-2">
+            Explorateur de Données
+          </h3>
+          <p className="text-slate-500">
+            Importez un fichier pour commencer l&apos;exploration
+          </p>
         </div>
       </div>
     );
@@ -397,7 +460,6 @@ export default function DataTable() {
   return (
     <TooltipProvider>
       <div className="space-y-5">
-
         {/* ── Top bar: title + quality badges ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -406,8 +468,8 @@ export default function DataTable() {
               Explorateur de Données
             </h3>
             <p className="text-slate-500 text-sm mt-0.5">
-              {data.length.toLocaleString("fr-FR")} lignes · {columns.length} colonnes ·{" "}
-              {processed.length.toLocaleString("fr-FR")} résultats
+              {data.length.toLocaleString("fr-FR")} lignes · {columns.length}{" "}
+              colonnes · {processed.length.toLocaleString("fr-FR")} résultats
             </p>
           </div>
 
@@ -430,7 +492,10 @@ export default function DataTable() {
             </button>
 
             {duplicateCount > 0 && (
-              <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">
+              <Badge
+                variant="outline"
+                className="text-amber-600 border-amber-200 bg-amber-50"
+              >
                 <AlertTriangle className="h-3 w-3 mr-1" />
                 {duplicateCount} doublon{duplicateCount > 1 ? "s" : ""}
               </Badge>
@@ -451,12 +516,23 @@ export default function DataTable() {
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {columns.map((col) => {
                   const s = colStats[col];
-                  const pct = Math.round(((data.length - s.nullCount) / data.length) * 100);
+                  const pct = Math.round(
+                    ((data.length - s.nullCount) / data.length) * 100,
+                  );
                   return (
-                    <div key={col} className="bg-white rounded-lg border border-slate-100 p-3">
+                    <div
+                      key={col}
+                      className="bg-white rounded-lg border border-slate-100 p-3"
+                    >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-slate-700 truncate max-w-[80px]">{col}</span>
-                        <span className={`text-xs font-bold ${qualityColor(pct)}`}>{pct}%</span>
+                        <span className="text-xs font-medium text-slate-700 truncate max-w-[80px]">
+                          {col}
+                        </span>
+                        <span
+                          className={`text-xs font-bold ${qualityColor(pct)}`}
+                        >
+                          {pct}%
+                        </span>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2">
                         <div
@@ -467,14 +543,20 @@ export default function DataTable() {
                       <div className="flex items-center justify-between text-xs text-slate-400">
                         <span className="flex items-center gap-1">
                           <TypeIcon type={s.type} />{" "}
-                          {s.type === "number" ? "Num." : s.type === "date" ? "Date" : "Texte"}
+                          {s.type === "number"
+                            ? "Num."
+                            : s.type === "date"
+                              ? "Date"
+                              : "Texte"}
                         </span>
                         <span>{s.uniqueCount} val.</span>
                         {s.trend && <TrendIcon trend={s.trend} />}
                       </div>
                       {s.type === "number" && s.min != null && (
                         <div className="text-xs text-slate-400 mt-1">
-                          moy {s.avg?.toLocaleString("fr-FR")} · [{s.min?.toLocaleString("fr-FR")} – {s.max?.toLocaleString("fr-FR")}]
+                          moy {s.avg?.toLocaleString("fr-FR")} · [
+                          {s.min?.toLocaleString("fr-FR")} –{" "}
+                          {s.max?.toLocaleString("fr-FR")}]
                         </div>
                       )}
                     </div>
@@ -493,7 +575,10 @@ export default function DataTable() {
             <Input
               placeholder="Recherche globale…"
               value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pl-9 h-9 text-sm"
             />
           </div>
@@ -505,44 +590,72 @@ export default function DataTable() {
                 <SlidersHorizontal className="h-4 w-4" />
                 Filtres
                 {columnFilters.length > 0 && (
-                  <Badge className="ml-1 px-1.5 py-0 text-xs bg-violet-600 text-white">{columnFilters.length}</Badge>
+                  <Badge className="ml-1 px-1.5 py-0 text-xs bg-violet-600 text-white">
+                    {columnFilters.length}
+                  </Badge>
                 )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-72 p-3" align="start">
-              <DropdownMenuLabel className="text-xs text-slate-500 font-medium mb-2">Ajouter un filtre</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs text-slate-500 font-medium mb-2">
+                Ajouter un filtre
+              </DropdownMenuLabel>
               <div className="space-y-2">
                 <select
                   className="w-full text-sm border border-slate-200 rounded-md px-2 py-1.5 bg-white"
                   value={activeFilter?.col ?? ""}
-                  onChange={(e) => setActiveFilter({ col: e.target.value, op: "contains", val: "" })}
+                  onChange={(e) =>
+                    setActiveFilter({
+                      col: e.target.value,
+                      op: "contains",
+                      val: "",
+                    })
+                  }
                 >
                   <option value="">Colonne…</option>
-                  {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {columns.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
                 {activeFilter?.col && (
                   <>
                     <select
                       className="w-full text-sm border border-slate-200 rounded-md px-2 py-1.5 bg-white"
                       value={activeFilter.op}
-                      onChange={(e) => setActiveFilter({ ...activeFilter, op: e.target.value as FilterOperator })}
+                      onChange={(e) =>
+                        setActiveFilter({
+                          ...activeFilter,
+                          op: e.target.value as FilterOperator,
+                        })
+                      }
                     >
                       <option value="contains">Contient</option>
                       <option value="equals">Égal à</option>
                       <option value="gt">Supérieur à</option>
                       <option value="lt">Inférieur à</option>
                       <option value="empty">Est vide</option>
-                      <option value="notempty">N'est pas vide</option>
+                      <option value="notempty">N&apos;est pas vide</option>
                     </select>
                     {!["empty", "notempty"].includes(activeFilter.op) && (
                       <Input
                         className="h-8 text-sm"
                         placeholder="Valeur…"
                         value={activeFilter.val}
-                        onChange={(e) => setActiveFilter({ ...activeFilter, val: e.target.value })}
+                        onChange={(e) =>
+                          setActiveFilter({
+                            ...activeFilter,
+                            val: e.target.value,
+                          })
+                        }
                       />
                     )}
-                    <Button size="sm" className="w-full bg-violet-600 hover:bg-violet-700 text-white h-8" onClick={addFilter}>
+                    <Button
+                      size="sm"
+                      className="w-full bg-violet-600 hover:bg-violet-700 text-white h-8"
+                      onClick={addFilter}
+                    >
                       <Zap className="h-3.5 w-3.5 mr-1" /> Appliquer
                     </Button>
                   </>
@@ -553,10 +666,20 @@ export default function DataTable() {
                   <DropdownMenuSeparator className="my-2" />
                   <div className="space-y-1">
                     {columnFilters.map((f) => (
-                      <div key={f.column} className="flex items-center justify-between text-xs bg-violet-50 rounded px-2 py-1.5">
-                        <span className="text-violet-700 font-medium">{f.column}</span>
-                        <span className="text-slate-500">{f.operator} {f.value}</span>
-                        <button onClick={() => removeFilter(f.column)} className="text-slate-400 hover:text-red-500">
+                      <div
+                        key={f.column}
+                        className="flex items-center justify-between text-xs bg-violet-50 rounded px-2 py-1.5"
+                      >
+                        <span className="text-violet-700 font-medium">
+                          {f.column}
+                        </span>
+                        <span className="text-slate-500">
+                          {f.operator} {f.value}
+                        </span>
+                        <button
+                          onClick={() => removeFilter(f.column)}
+                          className="text-slate-400 hover:text-red-500"
+                        >
                           <XCircle className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -582,14 +705,18 @@ export default function DataTable() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="start">
-              <DropdownMenuLabel className="text-xs text-slate-500">Afficher / masquer</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs text-slate-500">
+                Afficher / masquer
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {columns.map((col) => (
                 <DropdownMenuCheckboxItem
                   key={col}
                   checked={!hiddenCols.includes(col)}
                   onCheckedChange={(c) =>
-                    setHiddenCols((h) => c ? h.filter((x) => x !== col) : [...h, col])
+                    setHiddenCols((h) =>
+                      c ? h.filter((x) => x !== col) : [...h, col],
+                    )
                   }
                 >
                   {col}
@@ -605,12 +732,16 @@ export default function DataTable() {
                 <Bookmark className="h-4 w-4" />
                 Vues
                 {savedViews.length > 0 && (
-                  <Badge className="ml-1 px-1.5 py-0 text-xs bg-slate-600 text-white">{savedViews.length}</Badge>
+                  <Badge className="ml-1 px-1.5 py-0 text-xs bg-slate-600 text-white">
+                    {savedViews.length}
+                  </Badge>
                 )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64 p-3" align="start">
-              <DropdownMenuLabel className="text-xs text-slate-500 mb-2">Sauvegarder la vue actuelle</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs text-slate-500 mb-2">
+                Sauvegarder la vue actuelle
+              </DropdownMenuLabel>
               <div className="flex gap-1.5 mb-3">
                 <Input
                   className="h-8 text-sm flex-1"
@@ -619,7 +750,11 @@ export default function DataTable() {
                   onChange={(e) => setViewName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && saveView()}
                 />
-                <Button size="sm" className="h-8 bg-slate-800 text-white hover:bg-slate-700" onClick={saveView}>
+                <Button
+                  size="sm"
+                  className="h-8 bg-slate-800 text-white hover:bg-slate-700"
+                  onClick={saveView}
+                >
                   +
                 </Button>
               </div>
@@ -634,13 +769,17 @@ export default function DataTable() {
                         className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-50 transition"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-slate-700">{v.name}</span>
+                          <span className="text-sm font-medium text-slate-700">
+                            {v.name}
+                          </span>
                           <span className="text-xs text-slate-400 flex items-center gap-1">
-                            <Clock className="h-2.5 w-2.5" />{v.createdAt}
+                            <Clock className="h-2.5 w-2.5" />
+                            {v.createdAt}
                           </span>
                         </div>
                         <span className="text-xs text-slate-400">
-                          {v.filters.length} filtre{v.filters.length > 1 ? "s" : ""}
+                          {v.filters.length} filtre
+                          {v.filters.length > 1 ? "s" : ""}
                         </span>
                       </button>
                     ))}
@@ -659,7 +798,11 @@ export default function DataTable() {
                 className="h-9 gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-50"
                 onClick={copySelection}
               >
-                {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? (
+                  <CheckCircle className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
                 {copied ? "Copié!" : `Copier (${selectedRows.size})`}
               </Button>
             )}
@@ -697,15 +840,29 @@ export default function DataTable() {
             {searchTerm && (
               <Badge variant="outline" className="gap-1 text-xs">
                 <Search className="h-2.5 w-2.5" />
-                "{searchTerm}"
-                <button onClick={() => setSearchTerm("")} className="ml-1 text-slate-400 hover:text-red-500">×</button>
+                &ldquo;{searchTerm}&ldquo;
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="ml-1 text-slate-400 hover:text-red-500"
+                >
+                  ×
+                </button>
               </Badge>
             )}
             {columnFilters.map((f) => (
-              <Badge key={f.column} variant="outline" className="gap-1 text-xs bg-violet-50 border-violet-200 text-violet-700">
+              <Badge
+                key={f.column}
+                variant="outline"
+                className="gap-1 text-xs bg-violet-50 border-violet-200 text-violet-700"
+              >
                 <SlidersHorizontal className="h-2.5 w-2.5" />
                 {f.column} {f.operator} {f.value}
-                <button onClick={() => removeFilter(f.column)} className="ml-1 hover:text-red-500">×</button>
+                <button
+                  onClick={() => removeFilter(f.column)}
+                  className="ml-1 hover:text-red-500"
+                >
+                  ×
+                </button>
               </Badge>
             ))}
           </div>
@@ -722,12 +879,17 @@ export default function DataTable() {
                     <input
                       type="checkbox"
                       className="rounded border-slate-300 accent-violet-600"
-                      checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
+                      checked={
+                        selectedRows.size === paginatedData.length &&
+                        paginatedData.length > 0
+                      }
                       onChange={selectAll}
                     />
                   </TableHead>
                   {/* row index */}
-                  <TableHead className="w-12 text-xs text-slate-400 font-normal px-2">#</TableHead>
+                  <TableHead className="w-12 text-xs text-slate-400 font-normal px-2">
+                    #
+                  </TableHead>
 
                   {visibleCols.map((col) => {
                     const s = colStats[col];
@@ -747,11 +909,19 @@ export default function DataTable() {
                           <span className="text-slate-400">
                             <TypeIcon type={s.type} />
                           </span>
-                          <span className="font-semibold text-slate-700">{col}</span>
-                          {isPinned && <Pin className="h-2.5 w-2.5 text-violet-500" />}
+                          <span className="font-semibold text-slate-700">
+                            {col}
+                          </span>
+                          {isPinned && (
+                            <Pin className="h-2.5 w-2.5 text-violet-500" />
+                          )}
                           <span className="text-slate-300">
                             {sortColumn === col ? (
-                              sortDirection === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-violet-500" /> : <ChevronDown className="h-3.5 w-3.5 text-violet-500" />
+                              sortDirection === "asc" ? (
+                                <ChevronUp className="h-3.5 w-3.5 text-violet-500" />
+                              ) : (
+                                <ChevronDown className="h-3.5 w-3.5 text-violet-500" />
+                              )
                             ) : (
                               <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
                             )}
@@ -759,7 +929,10 @@ export default function DataTable() {
                           {/* Pin button on hover */}
                           <button
                             className="opacity-0 group-hover:opacity-100 transition ml-0.5"
-                            onClick={(e) => { e.stopPropagation(); togglePin(col); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePin(col);
+                            }}
                             title={isPinned ? "Désépingler" : "Épingler"}
                           >
                             {isPinned ? (
@@ -774,23 +947,28 @@ export default function DataTable() {
                           )}
                         </div>
                         {/* mini column stats bar */}
-                        {s.type === "number" && s.min != null && s.max != null && s.avg != null && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="mt-1 h-0.5 w-full bg-slate-200 rounded overflow-hidden">
-                                <div
-                                  className="h-full bg-violet-400 rounded"
-                                  style={{
-                                    width: `${((s.avg - s.min) / (s.max - s.min || 1)) * 100}%`,
-                                  }}
-                                />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">
-                              min {s.min?.toLocaleString("fr-FR")} · moy {s.avg?.toLocaleString("fr-FR")} · max {s.max?.toLocaleString("fr-FR")}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
+                        {s.type === "number" &&
+                          s.min != null &&
+                          s.max != null &&
+                          s.avg != null && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="mt-1 h-0.5 w-full bg-slate-200 rounded overflow-hidden">
+                                  <div
+                                    className="h-full bg-violet-400 rounded"
+                                    style={{
+                                      width: `${((s.avg - s.min) / (s.max - s.min || 1)) * 100}%`,
+                                    }}
+                                  />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="text-xs">
+                                min {s.min?.toLocaleString("fr-FR")} · moy{" "}
+                                {s.avg?.toLocaleString("fr-FR")} · max{" "}
+                                {s.max?.toLocaleString("fr-FR")}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                       </TableHead>
                     );
                   })}
@@ -800,7 +978,10 @@ export default function DataTable() {
               <TableBody>
                 {paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={visibleCols.length + 2} className="text-center py-16 text-slate-400">
+                    <TableCell
+                      colSpan={visibleCols.length + 2}
+                      className="text-center py-16 text-slate-400"
+                    >
                       <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
                       Aucun résultat pour cette recherche
                     </TableCell>
@@ -813,7 +994,9 @@ export default function DataTable() {
                       <TableRow
                         key={rowIdx}
                         className={`border-b border-slate-50 transition-colors cursor-pointer ${
-                          isSelected ? "bg-violet-50 hover:bg-violet-50" : "hover:bg-slate-50/80"
+                          isSelected
+                            ? "bg-violet-50 hover:bg-violet-50"
+                            : "hover:bg-slate-50/80"
                         }`}
                         onClick={() => toggleRowSelect(rowIdx)}
                       >
@@ -839,9 +1022,13 @@ export default function DataTable() {
                             <TableCell
                               key={col}
                               className={`px-3 py-2.5 text-sm transition-colors ${
-                                pinnedCols.includes(col) ? "bg-violet-50/40" : ""
+                                pinnedCols.includes(col)
+                                  ? "bg-violet-50/40"
+                                  : ""
                               } ${isHighlighted ? "bg-amber-50/60" : ""} ${
-                                isEmpty ? "text-slate-300 italic" : "text-slate-700"
+                                isEmpty
+                                  ? "text-slate-300 italic"
+                                  : "text-slate-700"
                               }`}
                             >
                               {isEmpty ? (
@@ -850,7 +1037,9 @@ export default function DataTable() {
                                 <Badge
                                   variant="outline"
                                   className={
-                                    ["true", "oui", "yes"].includes(String(raw).toLowerCase())
+                                    ["true", "oui", "yes"].includes(
+                                      String(raw).toLowerCase(),
+                                    )
                                       ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                                       : "bg-red-50 border-red-200 text-red-700"
                                   }
@@ -878,32 +1067,51 @@ export default function DataTable() {
                 {selectedRows.size > 0
                   ? `${selectedRows.size} sélectionné(s) · `
                   : ""}
-                {processed.length.toLocaleString("fr-FR")} ligne{processed.length > 1 ? "s" : ""}
+                {processed.length.toLocaleString("fr-FR")} ligne
+                {processed.length > 1 ? "s" : ""}
               </span>
               <select
                 className="text-sm border border-slate-200 rounded px-1.5 py-0.5 bg-white ml-2"
                 value={itemsPerPage}
-                onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
               >
                 {ITEMS_PER_PAGE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>{n} / page</option>
+                  <option key={n} value={n}>
+                    {n} / page
+                  </option>
                 ))}
               </select>
             </div>
 
             {totalPages > 1 && (
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setCurrentPage(1)} disabled={safePage === 1}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={safePage === 1}
+                >
                   <ChevronsLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                >
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
 
                 {/* page pills */}
                 <div className="flex items-center gap-0.5">
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const page = Math.max(1, Math.min(totalPages - 4, safePage - 2)) + i;
+                    const page =
+                      Math.max(1, Math.min(totalPages - 4, safePage - 2)) + i;
                     return (
                       <button
                         key={page}
@@ -920,10 +1128,24 @@ export default function DataTable() {
                   })}
                 </div>
 
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={safePage === totalPages}
+                >
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={safePage === totalPages}
+                >
                   <ChevronsRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -939,9 +1161,16 @@ export default function DataTable() {
             .map((col) => {
               const s = colStats[col];
               return (
-                <div key={col} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-lg shadow-sm text-xs">
-                  <span className="font-semibold text-slate-500 uppercase tracking-wide">{col}</span>
-                  <span className="text-slate-700">moy <strong>{s.avg?.toLocaleString("fr-FR")}</strong></span>
+                <div
+                  key={col}
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-lg shadow-sm text-xs"
+                >
+                  <span className="font-semibold text-slate-500 uppercase tracking-wide">
+                    {col}
+                  </span>
+                  <span className="text-slate-700">
+                    moy <strong>{s.avg?.toLocaleString("fr-FR")}</strong>
+                  </span>
                   {s.trend && <TrendIcon trend={s.trend} />}
                 </div>
               );
