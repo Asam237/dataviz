@@ -13,15 +13,10 @@ import {
   Github,
   Star,
   HeartHandshake,
+  Map,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DataImport from "@/components/DataImport";
 import ChartBuilder from "@/components/ChartBuilder";
@@ -30,6 +25,7 @@ import DataTable from "@/components/DataTable";
 import { DataProvider } from "@/contexts/DataContext";
 import AdvancedAnalytics from "@/components/AdvancedAnalytics";
 import Link from "next/link";
+import MapViewer from "@/components/Mapviewer";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("import");
@@ -38,7 +34,6 @@ export default function Home() {
     <DataProvider>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100">
         {/* Header */}
-
         <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-md sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-20">
@@ -96,7 +91,7 @@ export default function Home() {
           </div>
 
           {/* Feature Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
             <Card className="border-0 bg-gradient-to-br from-blue-50 to-blue-100/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
               <CardHeader className="pb-4">
                 <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mb-4">
@@ -147,6 +142,24 @@ export default function Home() {
                 </p>
               </CardContent>
             </Card>
+
+            {/* NEW: Map card */}
+            <Card className="border-0 bg-gradient-to-br from-teal-50 to-teal-100/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+              <CardHeader className="pb-4">
+                <div className="w-12 h-12 bg-teal-500 rounded-lg flex items-center justify-center mb-4">
+                  <Map className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-xl text-slate-900">
+                  Carte Interactive
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600 leading-relaxed">
+                  Visualisez vos localisations sur OpenStreetMap avec détection
+                  automatique des coordonnées
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Main Navigation */}
@@ -156,7 +169,7 @@ export default function Home() {
             className="w-full"
           >
             <div className="flex justify-center mb-8">
-              <TabsList className="grid grid-cols-5 lg:w-fit bg-white/80 backdrop-blur-sm border border-slate-200/60 shadow-lg rounded-xl p-1">
+              <TabsList className="grid grid-cols-6 lg:w-fit bg-white/80 backdrop-blur-sm border border-slate-200/60 shadow-lg rounded-xl p-1">
                 <TabsTrigger
                   value="import"
                   className="flex items-center gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
@@ -191,6 +204,15 @@ export default function Home() {
                 >
                   <FileText className="h-4 w-4" />
                   <span className="hidden sm:inline">Données</span>
+                </TabsTrigger>
+
+                {/* NEW: Map tab */}
+                <TabsTrigger
+                  value="map"
+                  className="flex items-center gap-2 data-[state=active]:bg-teal-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
+                >
+                  <Map className="h-4 w-4" />
+                  <span className="hidden sm:inline">Carte</span>
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -230,10 +252,19 @@ export default function Home() {
               >
                 <DataTable />
               </TabsContent>
+
+              {/* NEW: Map tab content */}
+              <TabsContent
+                value="map"
+                className="space-y-6 animate-in fade-in-50 duration-500"
+              >
+                <MapViewer />
+              </TabsContent>
             </div>
           </Tabs>
         </section>
       </div>
+
       {/* Footer */}
       <footer className="w-full py-8">
         <div className="container w-full mx-auto flex flex-col md:flex-row items-center justify-between">
